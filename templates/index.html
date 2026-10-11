@@ -1,0 +1,143 @@
+{% macro logomark(size=40, mark=false) -%}
+<svg viewBox="0 0 48 44" width="{{ size }}" height="{{ (size * 44 / 48)|round|int }}" fill="none" stroke="{{ '#fff' if mark else 'currentColor' }}" stroke-width="{{ 1.2 if mark else 1.4 }}" aria-hidden="true"><path d="M4 6l16 34L34 4M30 8c6-4 10 2 6 8-4 6-12 6-10 12 2 5 9 4 12 0"/><path d="M40 2L22 30" stroke="#c9ad82"/></svg>
+{%- endmacro %}
+{% macro ico(kind, size=24) -%}
+{% if kind == 'phone' %}<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>
+{% elif kind == 'pin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 21s7-6 7-11a7 7 0 10-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+{% elif kind == 'clock' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+{% elif kind == 'ig' %}<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor"/></svg>
+{% elif kind == 'tg' %}<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 3-4 5 4zM9 13l8-6"/></svg>{% endif %}
+{%- endmacro %}
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ site.name }} — ательє-майстерня у Києві</title>
+  <meta name="description" content="Ательє VEGERTALLE: пошив та ремонт одягу будь-якої складності. Київ, вул. Олександра Архипенка, 8Б.">
+  <meta name="theme-color" content="#10141c">
+  <meta property="og:title" content="{{ site.name }}">
+  <meta property="og:description" content="Ательє-майстерня у Києві. Пошив та ремонт одягу будь-якої складності. Якість у кожному стібку.">
+  <meta property="og:image" content="/og.jpg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Manrope:wght@300;400;500;600&display=swap&subset=cyrillic">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<header class="header" id="header">
+  <div class="wrap header-in">
+    <a class="logo" href="#home" aria-label="VEGERTALLE — на головну">{{ logomark() }}<span>VEGERTALLE</span></a>
+    <nav class="nav" id="nav" aria-label="Головне меню">
+      {% for href, label in nav %}<a href="{{ href }}"{% if loop.first %} class="active"{% endif %}>{{ label }}</a>{% endfor %}
+    </nav>
+    <a class="hphone" href="{{ site.phone_href }}">{{ ico('phone') }}<span><b>{{ site.phone_display }}</b><small>{{ site.hours_week }}<br>{{ site.hours_sat }}</small></span></a>
+    <button class="burger" aria-label="Відкрити меню" aria-expanded="false"><i></i><i></i><i></i></button>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="home">
+    <div class="hero-bg"></div>
+    <div class="wrap hero-in"><div class="hero-text">
+      {{ logomark(84, true) }}
+      <h1>{{ site.name }}</h1>
+      <p class="sub">{{ site.tagline }}</p>
+      <p class="slogan">{{ site.slogan }}</p>
+      <div class="btns"><a class="btn btn-light" href="#services">Наші послуги</a><a class="btn btn-ghost" href="#contacts">Зв’язатися</a></div>
+    </div></div>
+  </section>
+
+  <section class="light services" id="services"><div class="wrap">
+    <div class="head"><p class="eyebrow">Послуги</p><h2>Що ми робимо</h2>
+      <p>Професійний пошив та ремонт одягу будь-якої складності.<br>Працюємо з різними тканинами, шкірою та хутром.</p></div>
+    <div class="cards">
+      {% for d, title, text in services %}
+      <article class="card reveal"{% if loop.index0 %} style="--d:{{ loop.index0 * 0.08 }}s"{% endif %}>
+        <div class="ico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.3"><path d="{{ d }}"/></svg></div>
+        <h3>{{ title|safe }}</h3><p>{{ text|safe }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </div></section>
+
+  <section class="dark works" id="works"><div class="wrap">
+    <div class="head"><h2>Наші роботи</h2><p>Приклади пошиття та ремонту. Ми дбаємо про кожну деталь.</p></div>
+    <h3 class="work-sub">Пошиття</h3>
+    <div class="sew-grid">
+      {% for src, alt in sewing %}
+      <button type="button" class="reveal ba-shot" data-lb style="--d:{{ loop.index0 * 0.06 }}s" aria-label="{{ alt }}"><img src="{{ src }}" alt="{{ alt }}"></button>
+      {% endfor %}
+    </div>
+    <h3 class="work-sub">Ремонт</h3>
+    <div class="ba-grid">
+      {% for start in (0, 2) %}
+      <div class="ba-pair"><h3>{{ repairs[start][2] }}</h3><div class="ba-shots">
+        {% for i in (start, start + 1) %}{% set r = repairs[i] %}
+        <button type="button" class="reveal ba-shot" data-lb style="--d:{{ i * 0.06 }}s" aria-label="{{ r[1] }}"><img src="{{ r[0] }}" alt="{{ r[1] }}"><span{% if r[3] == 'Після' %} class="after"{% endif %}>{{ r[3] }}</span></button>
+        {% endfor %}
+      </div></div>
+      {% endfor %}
+    </div>
+  </div></section>
+
+  <section class="dark why" id="why">
+    <div class="why-text wrap-half"><h2>Чому обирають VEGERTALLE</h2><div class="perks">
+      {% for d, title, text in perks %}
+      <div class="perk reveal"{% if loop.index0 %} style="--d:{{ loop.index0 * 0.08 }}s"{% endif %}>
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2"><path d="{{ d }}"/></svg>
+        <div><h3>{{ title }}</h3><p>{{ text }}</p></div>
+      </div>
+      {% endfor %}
+    </div></div>
+    <div class="why-img"><img src="/img/machine.jpg" alt="Сучасна швейна машинка в ательє" loading="lazy"><p class="script">Ремонт одягу — це про турботу про ваш стиль!</p></div>
+  </section>
+
+  <section class="light contacts" id="contacts"><div class="wrap">
+    <div class="head"><p class="eyebrow">Контакти</p><h2>Завітайте до нас</h2></div>
+    <div class="c-grid">
+      <div class="c-info"><ul>
+        <li>{{ ico('pin') }}{{ site.address }}</li>
+        <li>{{ ico('phone') }}<a href="{{ site.phone_href }}">{{ site.phone_display }}</a></li>
+        <li>{{ ico('clock') }}<span>{{ site.hours_week }}<br>{{ site.hours_sat }}</span></li>
+      </ul></div>
+      <div class="c-act">
+        <div class="soc">
+          <a href="{{ site.instagram }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram">{{ ico('ig', 20) }}</a>
+          <a href="{{ site.telegram }}" target="_blank" rel="noopener noreferrer" aria-label="Telegram">{{ ico('tg', 20) }}</a>
+        </div>
+        <a class="btn btn-dark" href="{{ site.phone_href }}">Зателефонувати</a>
+        <a class="btn btn-line" href="{{ site.map_dir }}" target="_blank" rel="noopener noreferrer">Прокласти маршрут</a>
+      </div>
+      <div>
+        <div class="map">
+          <iframe class="map-canvas" title="Карта: {{ site.address }}" src="{{ site.map_embed }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+          <span class="atelier-pin" aria-hidden="true"><span class="atelier-pin-mark"><i></i></span></span>
+          <p class="map-badge">вул. Олександра Архипенка, 8Б</p>
+        </div>
+        <p class="map-cap">Мітка стоїть на будинку 8Б, Оболонь. <a href="{{ site.map_open }}" target="_blank" rel="noopener noreferrer">Відкрити в Google Maps</a></p>
+      </div>
+    </div>
+  </div></section>
+</main>
+
+<footer class="footer"><div class="wrap foot-in">
+  <a class="logo" href="#home">{{ logomark(30) }}<span>VEGERTALLE</span></a>
+  <em>{{ site.slogan }}</em>
+  <div class="foot-r">
+    <a href="{{ site.instagram }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram">{{ ico('ig') }}</a>
+    <a href="{{ site.telegram }}" target="_blank" rel="noopener noreferrer" aria-label="Telegram">{{ ico('tg') }}</a>
+    <span>{{ site.address }}</span>
+  </div>
+</div></footer>
+
+<div class="lightbox" id="lightbox" aria-hidden="true" role="dialog" aria-label="Перегляд фото">
+  <button class="lb-x" aria-label="Закрити">×</button>
+  <button class="lb-n lb-p" aria-label="Попереднє">‹</button>
+  <figure><img src="" alt=""><figcaption></figcaption></figure>
+  <button class="lb-n lb-nx" aria-label="Наступне">›</button>
+</div>
+<script src="/js/main.js"></script>
+</body>
+</html>
