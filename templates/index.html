@@ -65,6 +65,8 @@
   .outfit-details{max-width:none;margin-top:22px;gap:15px}
   .outfit-details img{height:170px}
 }
+
+@media(min-width:761px) and (max-width:1100px){.hero__image .object-slot{display:block;right:calc(100% + 16px);bottom:6%;width:84px;height:112px}}
 .appearance-control{position:relative;flex-shrink:0}
 .appearance-toggle{display:flex;align-items:center;gap:7px;padding:8px 0;background:transparent;color:var(--ink);font-size:9px;line-height:1;min-height:34px}
 .appearance-toggle svg{width:19px;height:19px;transition:transform .4s}
@@ -187,7 +189,7 @@ const THREE=await import('three');const{RoomEnvironment}=await import('three/add
 const flight=new THREE.Group(),spool=new THREE.Group();scene.add(flight);flight.add(spool);const wood=new THREE.MeshStandardMaterial({color:0x97714a,roughness:.52,metalness:.08}),edge=new THREE.MeshStandardMaterial({color:0xd1af7e,roughness:.42,metalness:.08}),thread=new THREE.MeshStandardMaterial({color:0xdcc5a6,roughness:.96}),holeMaterial=new THREE.MeshStandardMaterial({color:0x3b281a,roughness:.8});const core=new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,1.24,64),wood);spool.add(core);const body=new THREE.Mesh(new THREE.CylinderGeometry(.48,.48,1.05,96),thread);spool.add(body);for(const y of[-.63,.63]){const disc=new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,.11,80),wood);disc.position.y=y;spool.add(disc);const lip=new THREE.Mesh(new THREE.TorusGeometry(.565,.025,12,80),edge);lip.rotation.x=Math.PI/2;lip.position.y=y+(y>0?.057:-.057);spool.add(lip)}const hole=new THREE.Mesh(new THREE.CylinderGeometry(.105,.105,.008,32),holeMaterial);hole.position.y=.69;spool.add(hole);
 // Fine parallel fibres catch the light without a heavy texture download.
 const threadLines=[];for(let i=0;i<110;i++){const y=-.52+i*.0095;for(let j=0;j<64;j++){const a=j/64*Math.PI*2,b=(j+1)/64*Math.PI*2,r=.482+Math.sin(i*1.7)*.002;threadLines.push(Math.cos(a)*r,y,Math.sin(a)*r,Math.cos(b)*r,y+.001,Math.sin(b)*r)}}const fibreGeometry=new THREE.BufferGeometry();fibreGeometry.setAttribute('position',new THREE.Float32BufferAttribute(threadLines,3));const fibres=new THREE.LineSegments(fibreGeometry,new THREE.LineBasicMaterial({color:0xa88863,transparent:true,opacity:.5}));spool.add(fibres);const looseCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(.48,-.22,0),new THREE.Vector3(.84,-.35,.2),new THREE.Vector3(.89,-.7,.3),new THREE.Vector3(.48,-1.04,.24),new THREE.Vector3(.77,-1.15,.16)]);spool.add(new THREE.Mesh(new THREE.TubeGeometry(looseCurve,55,.009,6,false),thread));const label=new THREE.Mesh(new THREE.RingGeometry(.14,.39,64),new THREE.MeshStandardMaterial({color:0xf5e9d5,roughness:.8,side:THREE.DoubleSide}));label.rotation.x=-Math.PI/2;label.position.y=.693;spool.add(label);spool.rotation.set(.1,0,-.25);
-// One continuous scroll journey. DOM slots are destinations, never separate spools.
+// One spool, shown only in the reserved whitespace of the hero, services and contacts.
 const slots=[...document.querySelectorAll('.object-slot')];
 const lightweight=()=>window.atelierPreferences.lightweight();
 let viewportWidth=0,viewportHeight=0,route=[],needsRoute=true,previousScroll=scrollY;
@@ -198,34 +200,27 @@ function layout(){
   camera.aspect=viewportWidth/viewportHeight;camera.updateProjectionMatrix();canvas.dataset.quality=lightweight()?'mobile':'desktop';
 }
 function rebuildRoute(){
-  const light=lightweight(),phone=innerWidth<=760;
-  const points=slots.map(el=>{const r=el.getBoundingClientRect();return{id:el.dataset.object,x:r.left+r.width/2,y:r.top+scrollY+r.height/2,size:Math.min(r.height/2.25,r.width/1.9),visible:r.width>0&&r.height>0}}).filter(p=>p.visible);
-  if(!points.some(p=>p.id==='home'||p.id==='home-mobile')){const r=document.querySelector('.hero__image').getBoundingClientRect();points.push({id:'home',x:r.left-65,y:r.bottom+scrollY-80,size:45})}
-  // Extra waypoints keep the same spool travelling through the long gallery sections.
-  const stops=[['.works',.88,110],['.repairs',.87,145],['.why',.55,60],['.footer',.48,45]];
-  for(const [selector,x,offset] of stops){
-    const el=document.querySelector(selector);if(!el)continue;
-    const r=el.getBoundingClientRect();
-    points.push({id:selector.slice(1),x:innerWidth*(phone?.86:x),y:r.top+scrollY+(phone?75:offset),size:phone?36:selector==='.why'?42:55});
-  }
-  route=points.sort((a,b)=>a.y-b.y).map(p=>({...p,at:p.y-innerHeight*.55,size:Math.min(p.size,light?75:110)}));
+  route=slots.map(el=>{
+    const r=el.getBoundingClientRect(),photo=el.closest('.hero__image')?.querySelector('img');
+    return{id:el.dataset.object,x:r.left+r.width/2,y:r.top+scrollY+r.height/2,left:r.left,right:r.right,top:r.top+scrollY,bottom:r.bottom+scrollY,width:r.width,height:r.height,size:Math.min(r.height/2.25,r.width/1.9),safeRight:photo?photo.getBoundingClientRect().left-12:Infinity};
+  }).filter(p=>p.width>0&&p.height>0);
   needsRoute=false;
 }
-// Interpolate in scroll space, including the intervals where no slot is on screen.
-function routeAt(nodes,scroll,viewH,light){
-  if(!nodes.length)return null;
-  const first=nodes[0],last=nodes[nodes.length-1];
-  if(scroll<=first.at)return{x:first.x,y:first.y-scroll,size:first.size,moving:0};
-  if(scroll>=last.at)return{x:last.x,y:last.y-scroll,size:last.size,moving:0};
-  let i=0;while(i<nodes.length-2&&nodes[i+1].at<scroll)i++;
-  const a=nodes[i],b=nodes[i+1],f=(scroll-a.at)/(b.at-a.at),ease=f*f*(3-2*f),arc=Math.sin(f*Math.PI)**2;
-  return{x:a.x+(b.x-a.x)*ease,y:viewH*.55+arc*viewH*(light?.025:.09),size:a.size+(b.size-a.size)*ease,moving:arc};
+// A destination is eligible only while its reserved whitespace is on screen.
+function zoneAt(nodes,scroll,viewH){
+  let nearest=null,distance=Infinity;
+  for(const node of nodes){
+    if(node.bottom<=scroll||node.top>=scroll+viewH)continue;
+    const d=Math.abs(node.y-scroll-viewH*.55);
+    if(d<distance){distance=d;nearest=node}
+  }
+  return nearest;
 }
 layout();addEventListener('resize',layout,{passive:true});
 document.addEventListener('atelier-settings-change',layout);
 document.fonts.ready.then(()=>{needsRoute=true});
 const routeObserver=new ResizeObserver(()=>{needsRoute=true});document.querySelectorAll('main > section,.footer').forEach(el=>routeObserver.observe(el));
-document.body.classList.add('has-3d');canvas.classList.add('ready');canvas.dataset.journey='continuous';
+document.body.classList.add('has-3d');canvas.classList.add('ready');canvas.dataset.journey='reserved-zones';
 addEventListener('pointermove',event=>{if(!lightweight()&&event.pointerType!=='touch'){mouse.x=event.clientX/innerWidth*2-1;mouse.y=1-event.clientY/innerHeight*2}},{passive:true});
 document.addEventListener('pointerleave',()=>{mouse.x=mouse.y=0});
 const hangingThread=spool.children.find(child=>child.geometry&&child.geometry.type==='TubeGeometry');let lastThreadFrame=0;
@@ -244,17 +239,25 @@ function animate(now){
   if(document.hidden||document.body.classList.contains('no-scroll')){canvas.style.opacity='0';return}
   if(viewportWidth!==innerWidth||viewportHeight!==innerHeight)layout();
   if(needsRoute)rebuildRoute();
-  const target=routeAt(route,scrollY,viewportHeight,light);if(!target){canvas.style.opacity='0';return}
+  const zone=zoneAt(route,scrollY,viewportHeight);
+  if(!zone){
+    canvas.style.opacity='0';canvas.style.clipPath='inset(50%)';canvas.dataset.zone='none';previousScroll=scrollY;
+    return;
+  }
+  const target={x:zone.x,y:zone.y-scrollY,size:zone.size};
+  canvas.dataset.zone=zone.id;
   const mk=1-Math.exp(-dt*2.6);mouse.sx=THREE.MathUtils.lerp(mouse.sx,paused||light?0:mouse.x,mk);mouse.sy=THREE.MathUtils.lerp(mouse.sy,paused||light?0:mouse.y,mk);
-  const tx=target.x+(light?0:mouse.sx*18),ty=target.y+(light?0:mouse.sy*12);
+  const tx=target.x+(light?0:mouse.sx*10),ty=target.y+(light?0:mouse.sy*8);
   // Initialize only once: changing destination must never teleport the spool.
   if(!cur.initialized){cur.x=tx;cur.y=ty;cur.size=target.size;cur.initialized=true}
   const previousX=cur.x,previousY=cur.y,k=paused?1:1-Math.exp(-dt*(light?7:4.5));
   cur.x=THREE.MathUtils.lerp(cur.x,tx,k);cur.y=THREE.MathUtils.lerp(cur.y,ty,k);cur.size=THREE.MathUtils.lerp(cur.size,target.size,k);
   const vx=(cur.x-previousX)/Math.max(dt,.001),vy=(cur.y-previousY)/Math.max(dt,.001),scrollVelocity=(scrollY-previousScroll)/Math.max(dt,.001);previousScroll=scrollY;
-  // A viewport clip lets the spool cross between destinations instead of being cut off at each slot.
-  canvas.style.clipPath='inset(0)';
-  canvas.style.opacity=cur.y+cur.size*1.5>0&&cur.y-cur.size*1.5<viewportHeight?'1':'0';
+  // Clip the whole model, including the loose thread, to the intended empty area.
+  const margin=light?3:12,left=Math.max(0,zone.left-margin),right=Math.min(viewportWidth,zone.right+margin,zone.safeRight),top=Math.max(0,zone.top-scrollY-margin),bottom=Math.min(viewportHeight,zone.bottom-scrollY+margin);
+  canvas.style.clipPath=`inset(${top}px ${Math.max(0,viewportWidth-right)}px ${Math.max(0,viewportHeight-bottom)}px ${left}px)`;
+  const visible=Math.max(0,Math.min(zone.bottom-scrollY,viewportHeight)-Math.max(zone.top-scrollY,0));
+  canvas.style.opacity=String(Math.min(1,visible/40));
   const halfH=Math.tan(THREE.MathUtils.degToRad(15))*camera.position.z,halfW=halfH*camera.aspect;
   flight.position.set((cur.x/viewportWidth*2-1)*halfW,(1-cur.y/viewportHeight*2)*halfH+(paused?0:Math.sin(time*1.7)*(light?.009:.022)),0);flight.scale.setScalar(cur.size/viewportHeight*halfH*2);
   const pitch=.22+(light?0:mouse.sy*.18-THREE.MathUtils.clamp(vy*.0007,-.22,.22)),roll=-.25+(light?0:mouse.sx*.20+THREE.MathUtils.clamp(vx*.001,-.25,.25));
