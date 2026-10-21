@@ -220,7 +220,7 @@ layout();addEventListener('resize',layout,{passive:true});
 document.addEventListener('atelier-settings-change',layout);
 document.fonts.ready.then(()=>{needsRoute=true});
 const routeObserver=new ResizeObserver(()=>{needsRoute=true});document.querySelectorAll('main > section,.footer').forEach(el=>routeObserver.observe(el));
-document.body.classList.add('has-3d');canvas.classList.add('ready');canvas.dataset.journey='visible-flight';
+document.body.classList.add('has-3d');canvas.classList.add('ready');canvas.dataset.journey='free-space-flight';
 addEventListener('pointermove',event=>{if(!lightweight()&&event.pointerType!=='touch'){mouse.x=event.clientX/innerWidth*2-1;mouse.y=1-event.clientY/innerHeight*2}},{passive:true});
 document.addEventListener('pointerleave',()=>{mouse.x=mouse.y=0});
 const hangingThread=spool.children.find(child=>child.geometry&&child.geometry.type==='TubeGeometry');let lastThreadFrame=0;
@@ -232,32 +232,140 @@ function bendThread(t,vx,vy){
   for(let i=0;i<=55;i++){const p=curve.getPointAt(i/55);for(let j=0;j<=6;j++){const angle=j/6*Math.PI*2,n=frames.normals[i].clone().multiplyScalar(-Math.cos(angle)).addScaledVector(frames.binormals[i],Math.sin(angle)),index=i*7+j;position.setXYZ(index,p.x+n.x*.009,p.y+n.y*.009,p.z+n.z*.009);normal.setXYZ(index,n.x,n.y,n.z)}}
   position.needsUpdate=true;normal.needsUpdate=true;
 }
+// Geometry helpers use real content bounds; they never restrict the model to DOM slots.
+function clearPoint(p,r,boxes,w,h){
+  if(p.x<r+2||p.x>w-r-2||p.y<r+2||p.y>h-r-2)return false;
+  return !boxes.some(b=>p.x>b.left-r&&p.x<b.right+r&&p.y>b.top-r&&p.y<b.bottom+r);
+}
+function clearSegment(a,b,r,boxes,w,h){
+  if(!clearPoint(a,r,boxes,w,h)||!clearPoint(b,r,boxes,w,h))return false;
+  for(const box of boxes){
+    const left=box.left-r,right=box.right+r,top=box.top-r,bottom=box.bottom+r;
+    if(Math.max(a.x,b.x)<=left||Math.min(a.x,b.x)>=right||Math.max(a.y,b.y)<=top||Math.min(a.y,b.y)>=bottom)continue;
+    let lo=0,hi=1;
+    for(const [origin,d,min,max] of [[a.x,b.x-a.x,left,right],[a.y,b.y-a.y,top,bottom]]){
+      if(Math.abs(d)<1e-8){if(origin<=min||origin>=max){lo=2;break}}
+      else{const t1=(min-origin)/d,t2=(max-origin)/d;lo=Math.max(lo,Math.min(t1,t2));hi=Math.min(hi,Math.max(t1,t2))}
+    }
+    if(lo<=hi&&lo<=1&&hi>=0)return false;
+  }
+  return true;
+}
+function freePath(start,desired,r,boxes,w,h,step){
+  const startSafe=start&&clearPoint(start,r,boxes,w,h);
+  if(startSafe&&clearSegment(start,desired,r,boxes,w,h))return [desired];
+  const cols=Math.max(2,Math.ceil((w-r*2-4)/step)+1),rows=Math.max(2,Math.ceil((h-r*2-4)/step)+1);
+  if(w<r*2+5||h<r*2+5)return null;
+  const points=[],free=[];
+  for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+    const p={x:r+2+x*(w-r*2-4)/(cols-1),y:r+2+y*(h-r*2-4)/(rows-1)};
+    points.push(p);free.push(clearPoint(p,r,boxes,w,h));
+  }
+  let seed=-1,best=Infinity;
+  for(let i=0;i<points.length;i++)if(free[i]){
+    const origin=startSafe?start:desired,d=(points[i].x-origin.x)**2+(points[i].y-origin.y)**2;
+    if(d<best&&(!startSafe||clearSegment(start,points[i],r,boxes,w,h))){best=d;seed=i}
+  }
+  if(seed<0)return null;
+  const parents=new Int32Array(points.length);parents.fill(-2);parents[seed]=-1;
+  const queue=[seed];let head=0,goal=seed,score=Infinity;
+  while(head<queue.length){
+    const i=queue[head++],p=points[i],candidate=(p.x-desired.x)**2+(p.y-desired.y)**2;
+    if(candidate<score){score=candidate;goal=i}
+    const x=i%cols,y=Math.floor(i/cols);
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]){
+      const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=cols||ny>=rows)continue;
+      const j=ny*cols+nx;if(!free[j]||parents[j]!==-2)continue;
+      if(!clearSegment(p,points[j],r,boxes,w,h))continue;
+      parents[j]=i;queue.push(j);
+    }
+  }
+  const path=[];for(let i=goal;i>=0;i=parents[i])path.unshift(points[i]);
+  if(clearSegment(path[path.length-1],desired,r,boxes,w,h))path.push(desired);
+  // Line-of-sight shortcuts make the movement continuous, without visible grid corners.
+  const smooth=[];let origin=startSafe?start:path[0],i=0;
+  while(i<path.length){let next=i;for(let j=path.length-1;j>i;j--)if(clearSegment(origin,path[j],r,boxes,w,h)){next=j;break}smooth.push(path[next]);origin=path[next];i=next+1}
+  return smooth;
+}
+
+const blockedElements=[...document.querySelectorAll('main img,main button,main input,main a,.comparison,.map,.nav,.site-settings')];
+const textRanges=[];
+for(const root of document.querySelectorAll('main,.footer')){
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;
+  while(node=walker.nextNode())if(node.textContent.trim()&&!node.parentElement.closest('script,style,svg')){const range=document.createRange();range.selectNodeContents(node);textRanges.push(range)}
+}
+let occupied=[],waypoints=[],planSize=0,lastPlan=-Infinity,planDirty=true,spawnUntil=0;
+function collectAirspace(){
+  occupied=[];
+  function add(r,fixed=false,pad=10){if(r.width>0&&r.height>0)occupied.push({left:r.left-pad,right:r.right+pad,top:r.top+(fixed?0:scrollY)-pad,bottom:r.bottom+(fixed?0:scrollY)+pad,fixed})}
+  for(const el of blockedElements)add(el.getBoundingClientRect(),el.classList.contains('nav'),8);
+  for(const range of textRanges)for(const r of range.getClientRects())add(r,false,12);
+}
+function visibleBoxes(){return occupied.map(b=>({...b,top:b.top-(b.fixed?0:scrollY),bottom:b.bottom-(b.fixed?0:scrollY)})).filter(b=>b.bottom>-150&&b.top<viewportHeight+150)}
+function spoolRadius(size){return size*1.6+8}
+function planFlight(target,boxes,now,light){
+  const startTime=performance.now();
+  const maxSize=Math.min(target.size,light?55:74),sizes=[maxSize,48,36,26,18,12].map(n=>Math.min(n,maxSize)).filter((n,i,a)=>n>0&&a.indexOf(n)===i).sort((a,b)=>b-a);
+  let found=null;
+  // Preserve a reachable route from the existing position before considering a new entry point.
+  for(const preserve of [true,false]){
+    if(preserve&&!cur.initialized)continue;
+    for(const size of sizes){
+      const r=spoolRadius(size),origin=cur.initialized&&clearPoint(cur,r,boxes,viewportWidth,viewportHeight)?{x:cur.x,y:cur.y}:null;
+      if(preserve&&!origin)continue;
+      const desired={x:Math.max(r+2,Math.min(viewportWidth-r-2,target.x)),y:Math.max(r+2,Math.min(viewportHeight-r-2,target.y))};
+      const path=freePath(origin,desired,r,boxes,viewportWidth,viewportHeight,light?44:34);
+      if(path){const end=path[path.length-1]||origin,score=Math.hypot(end.x-target.x,end.y-target.y)+(maxSize-size)*1.5;if(!found||score<found.score)found={path,size,origin,score}}
+    }
+    if(found)break;
+  }
+  lastPlan=now;planDirty=false;canvas.dataset.planningMs=(performance.now()-startTime).toFixed(1);
+  if(!found){waypoints=[];planSize=0;return}
+  if(!found.origin){const entry=found.path.shift()||{x:target.x,y:target.y};cur.x=entry.x;cur.y=entry.y;cur.size=found.size;cur.initialized=true;canvas.style.visibility='hidden';canvas.style.opacity='0';spawnUntil=now+100}
+  waypoints=found.path;planSize=found.size;cur.size=Math.min(cur.size,planSize);
+}
+collectAirspace();
+document.addEventListener('atelier-settings-change',()=>{planDirty=true;lastPlan=-Infinity});
 const clock=new THREE.Clock();let time=0,lastFrame=0,lastStatus=0;
 function animate(now){
   requestAnimationFrame(animate);const light=lightweight();if(light&&now-lastFrame<34)return;lastFrame=now;
   const dt=Math.min(clock.getDelta(),.05),paused=atelierMotion.paused;if(!paused)time+=dt;
-  if(document.hidden||document.body.classList.contains('no-scroll')){canvas.style.opacity='0';return}
-  if(viewportWidth!==innerWidth||viewportHeight!==innerHeight)layout();
-  if(needsRoute)rebuildRoute();
-  const target=routeAt(route,scrollY,viewportHeight,light);
-  if(!target){canvas.style.opacity='0';return}
-  canvas.dataset.zone=target.zone;
+  if(document.hidden||document.body.classList.contains('no-scroll')){canvas.style.visibility='hidden';canvas.style.opacity='0';previousScroll=scrollY;return}
+  if(viewportWidth!==innerWidth||viewportHeight!==innerHeight){layout();planDirty=true;lastPlan=-Infinity}
+  if(needsRoute){rebuildRoute();planDirty=true}
+  const deltaScroll=scrollY-previousScroll;previousScroll=scrollY;
+  // Travel with the document during scrolling, so text cannot slide underneath the model.
+  if(cur.initialized){cur.y-=deltaScroll;for(const p of waypoints)p.y-=deltaScroll}
+  if(deltaScroll)planDirty=true;
+  const target=routeAt(route,scrollY,viewportHeight,light);if(!target)return;
   const mk=1-Math.exp(-dt*2.6);mouse.sx=THREE.MathUtils.lerp(mouse.sx,paused||light?0:mouse.x,mk);mouse.sy=THREE.MathUtils.lerp(mouse.sy,paused||light?0:mouse.y,mk);
-  const tx=target.x+(light?0:mouse.sx*10),ty=target.y+(light?0:mouse.sy*8);
-  // Initialize only once: changing destination must never teleport the spool.
-  if(!cur.initialized){cur.x=tx;cur.y=ty;cur.size=target.size;cur.initialized=true}
-  const previousX=cur.x,previousY=cur.y,k=paused?1:1-Math.exp(-dt*(light?7:4.5));
-  cur.x=THREE.MathUtils.lerp(cur.x,tx,k);cur.y=THREE.MathUtils.lerp(cur.y,ty,k);cur.size=THREE.MathUtils.lerp(cur.size,target.size,k);
-  const vx=(cur.x-previousX)/Math.max(dt,.001),vy=(cur.y-previousY)/Math.max(dt,.001),scrollVelocity=(scrollY-previousScroll)/Math.max(dt,.001);previousScroll=scrollY;
-  // Keep the same canvas visible during the entire transfer; slot masks would hide the flight.
-  canvas.style.clipPath='inset(0)';
-  canvas.style.opacity=cur.y+cur.size*1.5>0&&cur.y-cur.size*1.5<viewportHeight?'1':'0';
+  target.x+=light?0:mouse.sx*15;target.y+=light?0:mouse.sy*10;
+  let boxes=visibleBoxes();
+  const safe=cur.initialized&&clearPoint(cur,spoolRadius(cur.size),boxes,viewportWidth,viewportHeight);
+  if((!safe||planDirty||now-lastPlan>600)&&now-lastPlan>(light?280:180)){
+    collectAirspace();boxes=visibleBoxes();planFlight(target,boxes,now,light);
+  }
+  if(!cur.initialized||!planSize){canvas.style.visibility='hidden';canvas.style.opacity='0';return}
+  const previousX=cur.x,previousY=cur.y;
+  cur.size=THREE.MathUtils.lerp(cur.size,planSize,1-Math.exp(-dt*3));
+  const radius=spoolRadius(cur.size);
+  // Look ahead along a collision-free segment to remove turns left by the search lattice.
+  while(waypoints.length>1&&clearSegment(cur,waypoints[waypoints.length-1],radius,boxes,viewportWidth,viewportHeight))waypoints.splice(0,waypoints.length-1);
+  while(waypoints.length&&Math.hypot(waypoints[0].x-cur.x,waypoints[0].y-cur.y)<3)waypoints.shift();
+  if(waypoints.length){
+    const p=waypoints[0],distance=Math.hypot(p.x-cur.x,p.y-cur.y),step=paused?distance:Math.min(distance*(1-Math.exp(-dt*4.5)),dt*(light?320:520)),next={x:cur.x+(p.x-cur.x)*step/Math.max(distance,.001),y:cur.y+(p.y-cur.y)*step/Math.max(distance,.001)};
+    if(clearSegment(cur,next,radius,boxes,viewportWidth,viewportHeight)){cur.x=next.x;cur.y=next.y}else{planDirty=true;lastPlan=-Infinity}
+  }
+  const visible=clearPoint(cur,radius,boxes,viewportWidth,viewportHeight)&&now>=spawnUntil;
+  canvas.style.clipPath='none';canvas.style.visibility=visible?'visible':'hidden';canvas.style.opacity=visible?'1':'0';
+  if(!visible)return;
+  const vx=(cur.x-previousX)/Math.max(dt,.001),vy=(cur.y-previousY)/Math.max(dt,.001);
   const halfH=Math.tan(THREE.MathUtils.degToRad(15))*camera.position.z,halfW=halfH*camera.aspect;
-  flight.position.set((cur.x/viewportWidth*2-1)*halfW,(1-cur.y/viewportHeight*2)*halfH+(paused?0:Math.sin(time*1.7)*(light?.009:.022)),0);flight.scale.setScalar(cur.size/viewportHeight*halfH*2);
-  const pitch=.22+(light?0:mouse.sy*.18-THREE.MathUtils.clamp(vy*.0007,-.22,.22)),roll=-.25+(light?0:mouse.sx*.20+THREE.MathUtils.clamp(vx*.001,-.25,.25));
+  flight.position.set((cur.x/viewportWidth*2-1)*halfW,(1-cur.y/viewportHeight*2)*halfH,0);flight.scale.setScalar(cur.size/viewportHeight*halfH*2);
+  const pitch=.22+(light?0:mouse.sy*.15-THREE.MathUtils.clamp(vy*.0007,-.22,.22)),roll=-.25+(light?0:mouse.sx*.15+THREE.MathUtils.clamp(vx*.001,-.25,.25));
   spool.rotation.set(pitch,paused?.45:time*(light?.12:.23)+(light?0:mouse.sx*.32+scrollY*.0013),roll+(paused||light?0:Math.sin(time*.8)*.045));
-  if(now-lastStatus>500){canvas.dataset.position=cur.x.toFixed(1)+','+cur.y.toFixed(1);canvas.dataset.spoolSize=cur.size.toFixed(1);lastStatus=now}
-  if(!light&&!paused&&now-lastThreadFrame>33){bendThread(time,vx,vy+scrollVelocity*.12);lastThreadFrame=now}renderer.render(scene,camera);
+  if(now-lastStatus>250){canvas.dataset.position=cur.x.toFixed(1)+','+cur.y.toFixed(1);canvas.dataset.spoolSize=cur.size.toFixed(1);canvas.dataset.clearanceRadius=radius.toFixed(1);canvas.dataset.zone='free-space';lastStatus=now}
+  if(!light&&!paused&&now-lastThreadFrame>33){bendThread(time,vx,vy);lastThreadFrame=now}renderer.render(scene,camera);
 }
 requestAnimationFrame(animate);
 canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();document.body.classList.remove('has-3d');canvas.classList.remove('ready')});
